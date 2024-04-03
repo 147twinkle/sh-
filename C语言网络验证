@@ -1,0 +1,276 @@
+
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <pthread.h>
+#include <fstream>
+#include <string.h>
+#include <time.h>
+#include <malloc.h>
+#include <iostream>
+#include <fstream>
+#include "res/weiyan.h"
+#include "res/cJSON.h"
+#include "res/cJSON.c"
+#include "res/Encrypt.h"
+#include<iostream>
+#include<ctime>
+
+
+using namespace std;
+
+int w6d81f97f84b7b963d7fa3801a008b786()
+{
+
+    const static char *host = "wy.llua.cn";
+	// 填入 卡密登录接口
+
+	const static char *APPID = "596";
+	// 填入 APPID
+	
+	const static char *APPKEY = "hYaYwScDiqQ1v";
+	// 填入 APPKEY
+
+	const static char *RC4KEY = "MFCG4BOiKRZZx";
+	// 用户管理后台-RC4密钥
+
+	const static char *km_luj = "/sdcard/km";
+	// 卡密路径
+
+	const static char *imei_luj = "/sdcard/imei";
+	// 机器码路径
+	
+	const static bool gg_switch = true;
+	// 公告开关
+
+	printf("\033[35;1m");		// 粉红色
+	printf("欢迎使用\n");
+	printf("\033[32;1m");		// 绿色
+	printf("\n\n\n");
+	printf("\033[33;1m");		// 黄色
+
+	if (gg_switch){
+	    char ggUrl[256];
+	    sprintf(ggUrl, "app=%s",APPID);
+	
+    	// 提交数据
+    	char *ggData = httppost(host,"api/?id=notice",ggUrl);
+
+    	// RC4解密
+    	char* deggData=Decrypt(ggData, RC4KEY);
+	
+    	//解析JSON
+    	cJSON *cjson_gg = cJSON_Parse(deggData);
+	
+    	// 读取状态码
+    	int gg_code = cJSON_GetObjectItem(cjson_gg, "code")->valueint;
+	
+    	char *gg_msg = cJSON_GetObjectItem(cjson_gg, "msg")->valuestring;
+
+    	if (gg_code == 200){
+    		cJSON *ggmsgdata = cJSON_GetObjectItem(cjson_gg, "msg");
+            char *app_gg = cJSON_GetObjectItem(ggmsgdata, "app_gg")->valuestring;
+    	    printf("\n\n公告:%s\n\n",app_gg);
+    	}
+	}
+	
+	
+	home_main:
+	char km[40];				// 卡密
+	if (fopen(km_luj, "r") == NULL)
+	{
+		printf("\033[31;1m");
+		//printf("卡密读取失败\n");
+		printf("请输入卡密:");
+        char str[] = "";
+	    scanf("%s",&str);
+    
+        FILE *fp = fopen(km_luj, "w");
+        if (fp != NULL) {
+            fprintf(fp, "%s", str);
+		    fclose(fp);
+        }
+        std::cout << "写入成功！正在重新验证卡密" << std::endl;
+	}
+	fscanf(fopen(km_luj, "r"), "%s", &km);
+
+
+	char imei[40];				// 设备码
+	if (fopen(imei_luj, "r") == NULL)
+	{
+
+		printf("\033[31;1m");
+		printf("设备码获取失败\n");
+		srand(time(NULL)); // 设置随机数种子为当前时间
+        char* str = (char*)malloc((20 + 1) * sizeof(char));
+        int i;
+        for (i = 0; i < 20; i++) {
+            int randomNum = rand() % 26; // 生成0到25之间的随机数
+            str[i] = 'a' + randomNum; // 将随机数转换为对应的小写字母
+        }
+        str[20] = '\0'; // 字符串末尾添加结束符
+    
+        FILE *fp = fopen(imei_luj, "w");
+        if (fp == NULL) {
+            printf("文件创建失败");
+            return 1;
+        }
+        fprintf(fp, "%s", str);
+    
+        fclose(fp);
+    
+        std::cout << "设备码已重新获取！正在重新验证卡密" << std::endl;
+ 
+		
+	}
+	fscanf(fopen(imei_luj, "r"), "%s", &imei);
+
+
+	printf("卡密： %s\n设备码： %s\n\n", km, imei);
+	// ---------------------------------------------------------
+
+	if (km == "" or imei == "")
+	{
+		printf("\033[31;1m");
+		printf("无设备码或者卡密");
+		exit(1);
+	}
+
+	// 时间戳
+	time_t t;
+	t = time(NULL);
+	int ii = time(&t);
+    srand(time(NULL));
+	// 合并数据
+	char value[256];
+	char sign[256];
+	char data[256];
+	sprintf(value, "%d%d", ii,rand());
+	sprintf(sign, "kami=%s&markcode=%s&t=%d&%s", km, imei, ii, APPKEY);
+
+
+	// ---------------------------------------------------------
+	// md5验证签名
+	char *aaa = sign;
+	unsigned char *bbb = (unsigned char *)aaa;
+	MD5_CTX md5c;
+	MD5Init(&md5c);
+	int i;
+	unsigned char decrypt[16];
+	MD5Update(&md5c, bbb, strlen((char *)bbb));
+	MD5Final(&md5c, decrypt);
+	char lkey[32] = { 0 };
+	for (i = 0; i < 16; i++)
+	{
+		sprintf(&lkey[i * 2], "%02x", decrypt[i]);
+	}
+	// md5验证签名
+	// ---------------------------------------------------------
+
+	// RC4加密
+	sprintf(data, "kami=%s&markcode=%s&t=%d&sign=%s&value=%s", km, imei, ii, lkey, value);
+    char *dataa=Encrypt(data, RC4KEY);
+
+	// 合并数据
+	char cs[256];
+	sprintf(cs, "&data=%s", dataa);
+	
+	char url[256];
+	sprintf(url, "api/?id=kmlogin&app=%s",APPID);
+	
+	// 提交数据
+	char *tijiao = httppost(host,url,cs);
+
+	// RC4解密
+	char* tijiaoo=Decrypt(tijiao, RC4KEY);
+	
+	//解析JSON
+	cJSON *cjson = cJSON_Parse(tijiaoo);
+	
+	// 读取状态码
+	int code = cJSON_GetObjectItem(cjson, "VHtvSwksFAYJK")->valueint;
+
+	// 服务器时间
+	int time = cJSON_GetObjectItem(cjson, "PyzQcsxIUriMW")->valueint;
+
+	// 错误信息
+	char *msg = cJSON_GetObjectItem(cjson, "zPnvEIdxSlypM")->valuestring;
+	
+	// 登录校验
+	char *check = cJSON_GetObjectItem(cjson, "cEnzfJAydVYhH")->valuestring;
+
+	// 验证登录
+	if (code == 208) //code判断
+	{
+		cJSON *msgdata = cJSON_GetObjectItem(cjson, "zPnvEIdxSlypM");
+
+		// 到期时间戳
+		long vip = cJSON_GetObjectItem(msgdata, "rPBaoMvqLEwek")->valuedouble;
+
+		char weijy[256];
+		sprintf(weijy, "%d%s%s", time, APPKEY, value);
+
+		// ---------------------------------------------------------
+		// md5验证签名
+		char *aaaa = weijy;
+		unsigned char *bbbb = (unsigned char *)aaaa;
+		MD5_CTX md5c;
+		MD5Init(&md5c);
+		int i;
+		unsigned char decrypt[16];
+		MD5Update(&md5c, bbbb, strlen((char *)bbbb));
+		MD5Final(&md5c, decrypt);
+		char ykey[32] = { 0 };
+		for (i = 0; i < 16; i++)
+		{
+			sprintf(&ykey[i * 2], "%02x", decrypt[i]);
+		}
+		// md5验证签名
+		// ---------------------------------------------------------
+		if (string(ykey) == check)
+		{
+			printf("\033[32;1m");	// 绿色
+			printf("登录成功\n");
+			if (vip)
+			{
+				char vipmsg[11];
+				sprintf(vipmsg, "%ld", vip);
+				time_t timestamp = std::atoll(vipmsg);	// 将字符串类型的时间戳转换为time_t类型
+				std::tm * timeinfo = std::localtime(&timestamp);	// 将时间戳转换为本地时间
+				char buffer[80];
+				std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);	// 格式化时间
+				std::cout << "到期时间：" << buffer << std::endl;
+				return ii-(vip-ii);
+			}
+		}
+		else
+		{
+			printf("校验失败\n");
+			remove(km_luj);
+		    goto home_main;
+		}
+	}
+	else
+	{
+		printf("\033[35;1m");	// 粉红色
+		cout << msg << endl;
+		remove(km_luj);
+		goto home_main;
+	}
+	return 0;
+}
+//微验网络验证//
+
+
+
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    time_t _time_t = time(NULL);
+    if (w6d81f97f84b7b963d7fa3801a008b786() > time(&_time_t))return 0;
+    system("");
+    return 0;
+}
